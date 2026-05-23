@@ -3,6 +3,7 @@ import boto3
 import time
 import pandas as pd
 from datetime import datetime
+import google.generativeai as genai
 
 # 1. Core Page Customizations
 st.set_page_config(page_title="AEM AI Log Agent", layout="wide")
@@ -148,27 +149,29 @@ if user_input := st.chat_input("Ask about errors, request RCA, or look up keywor
     ### 🛠️ Step-by-Step Fix Action Plan
     """
 
-    # Hit Gemini Inference Engine via the OpenAI compatibility layer
+    # Hit Gemini Inference Engine natively
     with st.chat_message("assistant"):
         with st.spinner("Analyzing exceptions and trace logs via Gemini..."):
             try:
-                from openai import OpenAI
+                # Configure native Google AI client
+                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                 
-                # Connect to Google Gemini standard gateway endpoint
-                client_gemini = OpenAI(
-                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                    api_key=st.secrets["GEMINI_API_KEY"]
+                # Setup model configuration with system prompt routing instructions
+                model = genai.GenerativeModel(
+                    model_name='gemini-1.5-flash',
+                    system_instruction=system_prompt
                 )
                 
-                api_response = client_gemini.chat.completions.create(
-                    model="gemini-1.5-flash", 
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        *st.session_state.chat_history
-                    ],
-                    temperature=0.2
-                )
-                output_text = api_response.choices[0].message.content
+                # Format conversational history into Google's native chat layout
+                native_contents = []
+                for msg in st.session_state.chat_history:
+                    role_map = "user" if msg["role"] == "user" else "model"
+                    native_contents.append({"role": role_map, "parts": [msg["content"]]})
+                
+                # Execute inference generation
+                response = model.generate_content(native_contents)
+                output_text = response.text
+                
                 st.markdown(output_text)
                 st.session_state.chat_history.append({"role": "assistant", "content": output_text})
             except Exception as ex:
