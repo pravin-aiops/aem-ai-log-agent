@@ -17,12 +17,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🤖 AEM Live Log Analyzer AI Agent")
-st.caption("Partition-Optimized Historical Search & Architecture Diagnoser")
+st.caption("Direct-Path Historical Search & Architecture Diagnoser")
 
 # 2. Setup Sidebar Configuration Panel
 st.sidebar.header("⚙️ Log Parsing Engine Filters")
 
-# Configurable multi-word query targets
 search_keywords_input = st.sidebar.text_input(
     "Log Search Words (Comma separated for multiple)", 
     value="ERROR"
@@ -30,14 +29,12 @@ search_keywords_input = st.sidebar.text_input(
 
 log_level = st.sidebar.selectbox("Filter Level", ["ALL", "ERROR", "WARN", "INFO", "DEBUG"])
 
-# Multi-Year / Multi-Day Date Window Selectors
 st.sidebar.subheader("📅 Target Timeline Selection")
 preset_date = st.sidebar.selectbox(
     "Quick Timeline Presets", 
     ["Custom", "Last 90 Days", "Last 1 Year", "Last 2 Years"]
 )
 
-# Date calculations based on user choice
 today = datetime.now()
 if preset_date == "Last 90 Days":
     start_default = today - timedelta(days=90)
@@ -55,10 +52,9 @@ else:
 start_date = st.sidebar.date_input("Start Date", start_default)
 end_date = st.sidebar.date_input("End Date", end_default)
 
-# AWS Environment Variable Details (Fetched through Streamlit Production secrets)
 ATHENA_DATABASE = "default"
 ATHENA_TABLE = "aem_logs"
-ATHENA_OUTPUT_S3 = "s3://aem-athena-results-demo-2026/" # Ensure trailing slash
+ATHENA_OUTPUT_S3 = "s3://aem-athena-results-demo-2026/" 
 
 # 3. Helper Function to Query Athena Engine
 def run_athena_query(query_string):
@@ -105,32 +101,21 @@ def run_athena_query(query_string):
 
 # 4. Trigger Query Assembly
 if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
-    # Formulate individual partition string elements matching S3 path logic
-    s_year, s_month, s_day = start_date.strftime("%Y"), start_date.strftime("%m"), start_date.strftime("%d")
-    e_year, e_month, e_day = end_date.strftime("%Y"), end_date.strftime("%m"), end_date.strftime("%d")
-    
-    # Construct exact target query string
+    # Construct a broad query targeting log strings directly
     sql_query = f"SELECT log_date, log_time, log_level, message FROM {ATHENA_TABLE} WHERE "
     conditions = []
     
-    # Secure, native mathematical comparison approach for Presto partitions
-    date_condition = f"""
-    (
-        (year > '{s_year}') OR 
-        (year = '{s_year}' AND month > '{s_month}') OR 
-        (year = '{s_year}' AND month = '{s_month}' AND day >= '{s_day}')
-    ) AND (
-        (year < '{e_year}') OR 
-        (year = '{e_year}' AND month < '{e_month}') OR 
-        (year = '{e_year}' AND month = '{e_month}' AND day <= '{e_day}')
-    )
-    """
-    conditions.append(date_condition)
+    # Apply date constraints directly to the log content strings (DD.MM.YYYY format)
+    # This bypasses the structural folder grouping requirement entirely
+    str_start = start_date.strftime("%d.%m.%Y")
+    str_end = end_date.strftime("%d.%m.%Y")
+    
+    # Extract date patterns out of the raw parsed logs
+    conditions.append(f"log_date >= '{str_start}' AND log_date <= '{str_end}'")
 
     if log_level != "ALL":
         conditions.append(f"log_level = '{log_level}'")
         
-    # Parse comma separated text filters safely
     if search_keywords_input:
         words = [w.strip() for w in search_keywords_input.split(",") if w.strip()]
         for word in words:
@@ -138,7 +123,7 @@ if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
         
     sql_query += " AND ".join(conditions) + " LIMIT 100;"
     
-    with st.spinner("Executing optimized Partition Scan across S3 history..."):
+    with st.spinner("Scanning logs from S3 via Athena..."):
         df_results = run_athena_query(sql_query)
         st.session_state['fetched_logs'] = df_results
         st.sidebar.success(f"Successfully processed {len(df_results)} rows!")
@@ -196,7 +181,6 @@ if user_input := st.chat_input("Ask about errors, request RCA, or look up keywor
                     role_map = "user" if msg["role"] == "user" else "model"
                     native_contents.append({"role": role_map, "parts": [msg["content"]]})
                 
-                # Execute inference generation
                 response = model.generate_content(native_contents)
                 output_text = response.text
                 
