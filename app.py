@@ -151,19 +151,26 @@ if user_input := st.chat_input("Ask about errors, request RCA, or look up keywor
 
     # Hit LLM Completion Engine
     with st.chat_message("assistant"):
-        with st.spinner("Analyzing exceptions and trace logs..."):
-            try:
-                client_openai = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-                api_response = client_openai.chat.completions.create(
-                    model="gpt-4o-mini", # Cost savings choice for fast demos
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        *st.session_state.chat_history
-                    ],
-                    temperature=0.2
-                )
-                output_text = api_response.choices[0].message.content
-                st.markdown(output_text)
-                st.session_state.chat_history.append({"role": "assistant", "content": output_text})
-            except Exception as ex:
-                st.error(f"OpenAI Error: {str(ex)}")
+    with st.spinner("Analyzing exceptions via Gemini..."):
+        try:
+            from openai import OpenAI
+            
+            # Gemini supports the OpenAI standard format natively!
+            client_gemini = OpenAI(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=st.secrets["GEMINI_API_KEY"]
+            )
+            
+            api_response = client_gemini.chat.completions.create(
+                model="gemini-1.5-flash", # Fast, smart, and completely free tier
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    *st.session_state.chat_history
+                ],
+                temperature=0.2
+            )
+            output_text = api_response.choices[0].message.content
+            st.markdown(output_text)
+            st.session_state.chat_history.append({"role": "assistant", "content": output_text})
+        except Exception as ex:
+            st.error(f"Gemini Inference Error: {str(ex)}")
