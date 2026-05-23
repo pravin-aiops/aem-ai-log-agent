@@ -25,7 +25,7 @@ st.sidebar.header("⚙️ Log Parsing Engine Filters")
 # Configurable multi-word query targets
 search_keywords_input = st.sidebar.text_input(
     "Log Search Words (Comma separated for multiple)", 
-    value="ERROR, NullPointerException"
+    value="ERROR"
 )
 
 log_level = st.sidebar.selectbox("Filter Level", ["ALL", "ERROR", "WARN", "INFO", "DEBUG"])
@@ -106,17 +106,15 @@ def run_athena_query(query_string):
 # 4. Trigger Query Assembly
 if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
     # Formulate structural partition bounds matching S3 path strings (YYYY, MM, DD)
-    start_year, start_month, start_day = start_date.strftime("%Y"), start_date.strftime("%m"), start_date.strftime("%d")
-    end_year, end_month, end_day = end_date.strftime("%Y"), end_date.strftime("%m"), end_date.strftime("%d")
+    start_str = start_date.strftime("%Y%m%d")
+    end_str = end_date.strftime("%Y%m%d")
     
-    # Construct precise partition-based fast-scan SQL query
+    # Construct alternative robust query string
     sql_query = f"SELECT log_date, log_time, log_level, message FROM {ATHENA_TABLE} WHERE "
     conditions = []
     
-    # Apply folder structure optimization boundary
-    partition_condition = f"""
-    (year CONCAT month CONCAT day BETWEEN '{start_year}{start_month}{start_day}' AND '{end_year}{end_month}{end_day}')
-    """
+    # Apply standard string concat aggregation operator (||) for data catalog evaluation
+    partition_condition = f"CAST(year AS VARCHAR) || CAST(month AS VARCHAR) || CAST(day AS VARCHAR) BETWEEN '{start_str}' AND '{end_str}'"
     conditions.append(partition_condition)
 
     if log_level != "ALL":
@@ -126,7 +124,7 @@ if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
     if search_keywords_input:
         words = [w.strip() for w in search_keywords_input.split(",") if w.strip()]
         for word in words:
-            conditions.append(f"message LIKE '%{word}%'")
+            conditions.append(f"lower(message) LIKE '%{word.lower()}%'")
         
     sql_query += " AND ".join(conditions) + " LIMIT 100;"
     
