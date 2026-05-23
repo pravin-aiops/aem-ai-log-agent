@@ -27,7 +27,7 @@ search_keywords_input = st.sidebar.text_input(
     value="ERROR"
 )
 
-[Olog_level = st.sidebar.selectbox("Filter Level", ["ALL", "ERROR", "WARN", "INFO", "DEBUG"])
+log_level = st.sidebar.selectbox("Filter Level", ["ALL", "ERROR", "WARN", "INFO", "DEBUG"])
 
 st.sidebar.subheader("📅 Target Timeline Selection")
 preset_date = st.sidebar.selectbox(
@@ -59,7 +59,7 @@ ATHENA_OUTPUT_S3 = "s3://aem-athena-results-demo-2026/"
 # 3. Helper Function to Query Athena Engine
 def run_athena_query(query_string):
     try:
-[I        client = boto3.client(
+        client = boto3.client(
             'athena',
             aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
             aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"],
@@ -108,7 +108,6 @@ if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
     str_start = start_date.strftime("%d.%m.%Y")
     str_end = end_date.strftime("%d.%m.%Y")
     
-    # Direct substring evaluation context to keep execution simple and fast
     conditions.append(f"log_date >= '{str_start}' AND log_date <= '{str_end}'")
 
     if log_level != "ALL":
