@@ -105,22 +105,32 @@ def run_athena_query(query_string):
 
 # 4. Trigger Query Assembly
 if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
-    # Formulate structural partition bounds matching S3 path strings (YYYY, MM, DD)
-    start_str = start_date.strftime("%Y%m%d")
-    end_str = end_date.strftime("%Y%m%d")
+    # Formulate individual partition string elements matching S3 path logic
+    s_year, s_month, s_day = start_date.strftime("%Y"), start_date.strftime("%m"), start_date.strftime("%d")
+    e_year, e_month, e_day = end_date.strftime("%Y"), end_date.strftime("%m"), end_date.strftime("%d")
     
-    # Construct alternative robust query string
+    # Construct exact target query string
     sql_query = f"SELECT log_date, log_time, log_level, message FROM {ATHENA_TABLE} WHERE "
     conditions = []
     
-    # Apply standard string concat aggregation operator (||) for data catalog evaluation
-    partition_condition = f"CAST(year AS VARCHAR) || CAST(month AS VARCHAR) || CAST(day AS VARCHAR) BETWEEN '{start_str}' AND '{end_str}'"
-    conditions.append(partition_condition)
+    # Secure, native mathematical comparison approach for Presto partitions
+    date_condition = f"""
+    (
+        (year > '{s_year}') OR 
+        (year = '{s_year}' AND month > '{s_month}') OR 
+        (year = '{s_year}' AND month = '{s_month}' AND day >= '{s_day}')
+    ) AND (
+        (year < '{e_year}') OR 
+        (year = '{e_year}' AND month < '{e_month}') OR 
+        (year = '{e_year}' AND month = '{e_month}' AND day <= '{e_day}')
+    )
+    """
+    conditions.append(date_condition)
 
     if log_level != "ALL":
         conditions.append(f"log_level = '{log_level}'")
         
-    # Multi-word layout parser
+    # Parse comma separated text filters safely
     if search_keywords_input:
         words = [w.strip() for w in search_keywords_input.split(",") if w.strip()]
         for word in words:
@@ -186,6 +196,7 @@ if user_input := st.chat_input("Ask about errors, request RCA, or look up keywor
                     role_map = "user" if msg["role"] == "user" else "model"
                     native_contents.append({"role": role_map, "parts": [msg["content"]]})
                 
+                # Execute inference generation
                 response = model.generate_content(native_contents)
                 output_text = response.text
                 
