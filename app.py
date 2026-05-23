@@ -17,7 +17,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🤖 AEM Live Log Analyzer AI Agent")
-st.caption("Direct-Path Historical Search & Architecture Diagnoser")
+st.caption("Direct-Text Search & Architecture Diagnoser")
 
 # 2. Setup Sidebar Configuration Panel
 st.sidebar.header("⚙️ Log Parsing Engine Filters")
@@ -101,17 +101,16 @@ def run_athena_query(query_string):
 
 # 4. Trigger Query Assembly
 if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
-    # Construct a broad query targeting log strings directly
-    sql_query = f"SELECT log_date, log_time, log_level, message FROM {ATHENA_TABLE} WHERE "
+    sql_query = f"SELECT log_date, log_time, log_level, message FROM {ATHENA_TABLE}"
     conditions = []
     
-    # Apply date constraints directly to the log content strings (DD.MM.YYYY format)
-    # This bypasses the structural folder grouping requirement entirely
+    # Check if the log entries match the requested timeline window bounds
+    # Note: AEM dates inside the text are stored as DD.MM.YYYY strings
     str_start = start_date.strftime("%d.%m.%Y")
     str_end = end_date.strftime("%d.%m.%Y")
     
-    # Extract date patterns out of the raw parsed logs
-    conditions.append(f"log_date >= '{str_start}' AND log_date <= '{str_end}'")
+    # We parse the text dates directly into standard ISO dates using Athena's parsing engine
+    conditions.append(f"parse_datetime(log_date, 'dd.MM.yyyy') BETWEEN parse_datetime('{str_start}', 'dd.MM.yyyy') AND parse_datetime('{str_end}', 'dd.MM.yyyy')")
 
     if log_level != "ALL":
         conditions.append(f"log_level = '{log_level}'")
@@ -120,10 +119,13 @@ if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
         words = [w.strip() for w in search_keywords_input.split(",") if w.strip()]
         for word in words:
             conditions.append(f"lower(message) LIKE '%{word.lower()}%'")
+            
+    if conditions:
+        sql_query += " WHERE " + " AND ".join(conditions)
         
-    sql_query += " AND ".join(conditions) + " LIMIT 100;"
+    sql_query += " LIMIT 100;"
     
-    with st.spinner("Scanning logs from S3 via Athena..."):
+    with st.spinner("Scanning all logs from S3 via Athena..."):
         df_results = run_athena_query(sql_query)
         st.session_state['fetched_logs'] = df_results
         st.sidebar.success(f"Successfully processed {len(df_results)} rows!")
