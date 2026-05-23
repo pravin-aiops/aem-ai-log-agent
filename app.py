@@ -8,7 +8,6 @@ import google.generativeai as genai
 # 1. Core Page Customizations
 st.set_page_config(page_title="AEM AI Log Agent", layout="wide")
 
-# Inject Custom CSS for dark-mode terminal visuals
 st.markdown("""
     <style>
     .stChatInput { position: fixed; bottom: 30px; }
@@ -18,7 +17,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🤖 AEM Live Log Analyzer AI Agent")
-st.caption("Cost-Effective Serverless Search & Architecture Diagnoser (Powered by Google Gemini)")
+st.caption("Partition-Optimized Historical Search & Architecture Diagnoser")
 
 # 2. Setup Sidebar Configuration Panel
 st.sidebar.header("⚙️ Log Parsing Engine Filters")
@@ -64,7 +63,6 @@ ATHENA_OUTPUT_S3 = "s3://aem-athena-results-demo-2026/" # Ensure trailing slash
 # 3. Helper Function to Query Athena Engine
 def run_athena_query(query_string):
     try:
-        # Use credentials from st.secrets
         client = boto3.client(
             'athena',
             aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
@@ -79,7 +77,6 @@ def run_athena_query(query_string):
         )
         exec_id = response['QueryExecutionId']
         
-        # Keep polling until query completes
         while True:
             status = client.get_query_execution(QueryExecutionId=exec_id)['QueryExecution']['Status']['State']
             if status in ['SUCCEEDED', 'FAILED', 'CANCELLED']:
@@ -87,7 +84,6 @@ def run_athena_query(query_string):
             time.sleep(0.5)
             
         if status == 'SUCCEEDED':
-            # Retrieve the query data directly from the processed CSV in S3
             s3_client = boto3.client(
                 's3',
                 aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
@@ -109,36 +105,39 @@ def run_athena_query(query_string):
 
 # 4. Trigger Query Assembly
 if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
-    # Formulate Date Strings matching DD.MM.YYYY logic
-    str_start = start_date.strftime("%d.%m.%Y")
-    str_end = end_date.strftime("%d.%m.%Y")
+    # Formulate structural partition bounds matching S3 path strings (YYYY, MM, DD)
+    start_year, start_month, start_day = start_date.strftime("%Y"), start_date.strftime("%m"), start_date.strftime("%d")
+    end_year, end_month, end_day = end_date.strftime("%Y"), end_date.strftime("%m"), end_date.strftime("%d")
     
-    # Construct precise SQL query
+    # Construct precise partition-based fast-scan SQL query
     sql_query = f"SELECT log_date, log_time, log_level, message FROM {ATHENA_TABLE} WHERE "
     conditions = []
     
+    # Apply folder structure optimization boundary
+    partition_condition = f"""
+    (year CONCAT month CONCAT day BETWEEN '{start_year}{start_month}{start_day}' AND '{end_year}{end_month}{end_day}')
+    """
+    conditions.append(partition_condition)
+
     if log_level != "ALL":
         conditions.append(f"log_level = '{log_level}'")
         
     # Multi-word layout parser
     if search_keywords_input:
-        # Split by comma, strip blank spaces, filter out empty elements
         words = [w.strip() for w in search_keywords_input.split(",") if w.strip()]
         for word in words:
             conditions.append(f"message LIKE '%{word}%'")
         
-    conditions.append(f"log_date BETWEEN '{str_start}' AND '{str_end}'")
     sql_query += " AND ".join(conditions) + " LIMIT 100;"
     
-    # Debug message to see what query Athena is processing
-    with st.spinner("Executing Athena Scan across S3 historical storage..."):
+    with st.spinner("Executing optimized Partition Scan across S3 history..."):
         df_results = run_athena_query(sql_query)
         st.session_state['fetched_logs'] = df_results
         st.sidebar.success(f"Successfully processed {len(df_results)} rows!")
 
 # Show structural data table preview if populated
 if 'fetched_logs' in st.session_state and not st.session_state['fetched_logs'].empty:
-    with st.expander("📄 View Live Raw Filtered Logs DataFrame", expanded=False):
+    with st.expander("📄 View Live Raw Filtered Logs DataFrame", expanded=True):
         st.dataframe(st.session_state['fetched_logs'], use_container_width=True)
 
 # 5. Core Chat Logic Setup
@@ -147,23 +146,19 @@ if "chat_history" not in st.session_state:
         {"role": "assistant", "content": "Welcome! I am your AEM Expert Agent powered by Gemini. Pull logs via the sidebar, then ask me to perform an RCA, summary, or debugging script outline."}
     ]
 
-# Display older messages cleanly
 for chat in st.session_state.chat_history:
     with st.chat_message(chat["role"]):
         st.markdown(chat["content"])
 
-# User Chat Prompt Action
 if user_input := st.chat_input("Ask about errors, request RCA, or look up keyword trends..."):
     st.session_state.chat_history.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # Convert context dataframe into a compressed text block for the LLM
     context_string = "No logs pulled yet. Prompt the user to use the sidebar filters if context is required."
     if 'fetched_logs' in st.session_state and not st.session_state['fetched_logs'].empty:
         context_string = st.session_state['fetched_logs'].to_string(index=False)
 
-    # AI Orchestration Prompt Engineering
     system_prompt = f"""
     You are an AI DevOps Architect specializing in Adobe Experience Manager (AEM 6.5 and AEMaaCS).
     Your goal is to evaluate raw target logs to provide concrete Root Cause Analysis (RCA), contextual summaries, and steps for technical resolution.
@@ -179,26 +174,20 @@ if user_input := st.chat_input("Ask about errors, request RCA, or look up keywor
     ### 🛠️ Step-by-Step Fix Action Plan
     """
 
-    # Hit Gemini Inference Engine natively
     with st.chat_message("assistant"):
         with st.spinner("Analyzing exceptions and trace logs via Gemini..."):
             try:
-                # Configure native Google AI client
                 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                
-                # Setup model configuration with system prompt routing instructions
                 model = genai.GenerativeModel(
                     model_name='gemini-2.5-flash',
                     system_instruction=system_prompt
                 )
                 
-                # Format conversational history into Google's native chat layout
                 native_contents = []
                 for msg in st.session_state.chat_history:
                     role_map = "user" if msg["role"] == "user" else "model"
                     native_contents.append({"role": role_map, "parts": [msg["content"]]})
                 
-                # Execute inference generation
                 response = model.generate_content(native_contents)
                 output_text = response.text
                 
