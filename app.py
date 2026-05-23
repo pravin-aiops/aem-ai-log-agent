@@ -2,7 +2,6 @@ import streamlit as st
 import boto3
 import time
 import pandas as pd
-import openai
 from datetime import datetime
 
 # 1. Core Page Customizations
@@ -18,7 +17,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🤖 AEM Live Log Analyzer AI Agent")
-st.caption("Cost-Effective Serverless Search & Architecture Diagnoser")
+st.caption("Cost-Effective Serverless Search & Architecture Diagnoser (Powered by Google Gemini)")
 
 # 2. Setup Sidebar Configuration Panel
 st.sidebar.header("⚙️ Log Parsing Engine Filters")
@@ -31,10 +30,10 @@ log_level = st.sidebar.selectbox("Filter Level", ["ALL", "ERROR", "WARN", "INFO"
 start_date = st.sidebar.date_input("Start Date", datetime.now())
 end_date = st.sidebar.date_input("End Date", datetime.now())
 
-# AWS Environment Variable Details (Fetched locally or through Streamlit Production secrets)
+# AWS Environment Variable Details (Fetched through Streamlit Production secrets)
 ATHENA_DATABASE = "default"
 ATHENA_TABLE = "aem_logs"
-ATHENA_OUTPUT_S3 = "s3://forward-log/" # Ensure trailing slash
+ATHENA_OUTPUT_S3 = "s3://aem-athena-results-demo-2026/" # Ensure trailing slash
 
 # 3. Helper Function to Query Athena Engine
 def run_athena_query(query_string):
@@ -114,7 +113,7 @@ if 'fetched_logs' in st.session_state and not st.session_state['fetched_logs'].e
 # 5. Core Chat Logic Setup
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
-        {"role": "assistant", "content": "Welcome! I am your AEM Expert Agent. Pull logs via the sidebar, then ask me to perform an RCA, summary, or debugging script outline."}
+        {"role": "assistant", "content": "Welcome! I am your AEM Expert Agent powered by Gemini. Pull logs via the sidebar, then ask me to perform an RCA, summary, or debugging script outline."}
     ]
 
 # Display older messages
@@ -149,28 +148,28 @@ if user_input := st.chat_input("Ask about errors, request RCA, or look up keywor
     ### 🛠️ Step-by-Step Fix Action Plan
     """
 
-    # Hit LLM Completion Engine
+    # Hit Gemini Inference Engine via the OpenAI compatibility layer
     with st.chat_message("assistant"):
-    with st.spinner("Analyzing exceptions via Gemini..."):
-        try:
-            from openai import OpenAI
-            
-            # Gemini supports the OpenAI standard format natively!
-            client_gemini = OpenAI(
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                api_key=st.secrets["GEMINI_API_KEY"]
-            )
-            
-            api_response = client_gemini.chat.completions.create(
-                model="gemini-1.5-flash", # Fast, smart, and completely free tier
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    *st.session_state.chat_history
-                ],
-                temperature=0.2
-            )
-            output_text = api_response.choices[0].message.content
-            st.markdown(output_text)
-            st.session_state.chat_history.append({"role": "assistant", "content": output_text})
-        except Exception as ex:
-            st.error(f"Gemini Inference Error: {str(ex)}")
+        with st.spinner("Analyzing exceptions and trace logs via Gemini..."):
+            try:
+                from openai import OpenAI
+                
+                # Connect to Google Gemini standard gateway endpoint
+                client_gemini = OpenAI(
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                    api_key=st.secrets["GEMINI_API_KEY"]
+                )
+                
+                api_response = client_gemini.chat.completions.create(
+                    model="gemini-1.5-flash", # Free tier target model
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        *st.session_state.chat_history
+                    ],
+                    temperature=0.2
+                )
+                output_text = api_response.choices[0].message.content
+                st.markdown(output_text)
+                st.session_state.chat_history.append({"role": "assistant", "content": output_text})
+            except Exception as ex:
+                st.error(f"Gemini Inference Error: {str(ex)}")
