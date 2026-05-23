@@ -2,7 +2,7 @@ import streamlit as st
 import boto3
 import time
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import google.generativeai as genai
 
 # 1. Core Page Customizations
@@ -23,13 +23,38 @@ st.caption("Cost-Effective Serverless Search & Architecture Diagnoser (Powered b
 # 2. Setup Sidebar Configuration Panel
 st.sidebar.header("⚙️ Log Parsing Engine Filters")
 
-# Configurable query targets
-search_keyword = st.sidebar.text_input("Log Search Text / Match Key", value="ERROR")
+# Configurable multi-word query targets
+search_keywords_input = st.sidebar.text_input(
+    "Log Search Words (Comma separated for multiple)", 
+    value="ERROR, NullPointerException"
+)
+
 log_level = st.sidebar.selectbox("Filter Level", ["ALL", "ERROR", "WARN", "INFO", "DEBUG"])
 
-# Date Filters
-start_date = st.sidebar.date_input("Start Date", datetime.now())
-end_date = st.sidebar.date_input("End Date", datetime.now())
+# Multi-Year / Multi-Day Date Window Selectors
+st.sidebar.subheader("📅 Target Timeline Selection")
+preset_date = st.sidebar.selectbox(
+    "Quick Timeline Presets", 
+    ["Custom", "Last 90 Days", "Last 1 Year", "Last 2 Years"]
+)
+
+# Date calculations based on user choice
+today = datetime.now()
+if preset_date == "Last 90 Days":
+    start_default = today - timedelta(days=90)
+    end_default = today
+elif preset_date == "Last 1 Year":
+    start_default = today - timedelta(days=365)
+    end_default = today
+elif preset_date == "Last 2 Years":
+    start_default = today - timedelta(days=730)
+    end_default = today
+else:
+    start_default = today
+    end_default = today
+
+start_date = st.sidebar.date_input("Start Date", start_default)
+end_date = st.sidebar.date_input("End Date", end_default)
 
 # AWS Environment Variable Details (Fetched through Streamlit Production secrets)
 ATHENA_DATABASE = "default"
@@ -70,7 +95,6 @@ def run_athena_query(query_string):
                 region_name=st.secrets["AWS_DEFAULT_REGION"]
             )
             result_file_key = f"{exec_id}.csv"
-            # Extract just the bucket name out of the S3 output path
             bucket_name = ATHENA_OUTPUT_S3.replace("s3://", "").split("/")[0]
             
             obj = s3_client.get_object(Bucket=bucket_name, Key=result_file_key)
@@ -95,13 +119,19 @@ if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
     
     if log_level != "ALL":
         conditions.append(f"log_level = '{log_level}'")
-    if search_keyword:
-        conditions.append(f"message LIKE '%{search_keyword}%'")
+        
+    # Multi-word layout parser
+    if search_keywords_input:
+        # Split by comma, strip blank spaces, filter out empty elements
+        words = [w.strip() for w in search_keywords_input.split(",") if w.strip()]
+        for word in words:
+            conditions.append(f"message LIKE '%{word}%'")
         
     conditions.append(f"log_date BETWEEN '{str_start}' AND '{str_end}'")
     sql_query += " AND ".join(conditions) + " LIMIT 100;"
     
-    with st.spinner("Executing Athena Scan across S3 storage..."):
+    # Debug message to see what query Athena is processing
+    with st.spinner("Executing Athena Scan across S3 historical storage..."):
         df_results = run_athena_query(sql_query)
         st.session_state['fetched_logs'] = df_results
         st.sidebar.success(f"Successfully processed {len(df_results)} rows!")
