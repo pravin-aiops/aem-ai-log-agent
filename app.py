@@ -69,7 +69,8 @@ def run_athena_query(query_string):
         response = client.start_query_execution(
             QueryString=query_string,
             QueryExecutionContext={'Database': ATHENA_DATABASE},
-            ResultConfiguration={'OutputLocation': ATHENA_OUTPUT_S3}
+            ResultConfiguration={'OutputLocation': ATHENA_OUTPUT_S3},
+            WorkGroup='primary' # Explicitly matching your verified active AWS workgroup
         )
         exec_id = response['QueryExecutionId']
         
@@ -104,12 +105,9 @@ if st.sidebar.button("🔍 Sync & Index target Logs", use_container_width=True):
     sql_query = f"SELECT log_date, log_time, log_level, message FROM {ATHENA_TABLE}"
     conditions = []
     
-    # Check if the log entries match the requested timeline window bounds
-    # Note: AEM dates inside the text are stored as DD.MM.YYYY strings
     str_start = start_date.strftime("%d.%m.%Y")
     str_end = end_date.strftime("%d.%m.%Y")
     
-    # We parse the text dates directly into standard ISO dates using Athena's parsing engine
     conditions.append(f"parse_datetime(log_date, 'dd.MM.yyyy') BETWEEN parse_datetime('{str_start}', 'dd.MM.yyyy') AND parse_datetime('{str_end}', 'dd.MM.yyyy')")
 
     if log_level != "ALL":
