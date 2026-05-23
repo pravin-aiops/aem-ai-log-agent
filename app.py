@@ -158,7 +158,7 @@ if user_input := st.chat_input("Ask about errors, request RCA, or look up keywor
                 
                 # Setup model configuration with system prompt routing instructions
                 model = genai.GenerativeModel(
-                    model_name='gemini-1.5-flash-latest',
+                    model_name='gemini-2.5-flash',
                     system_instruction=system_prompt
                 )
                 
