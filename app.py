@@ -118,8 +118,9 @@ if "chat_history" not in st.session_state:
 
 # Display older messages
 for chat in st.session_state.chat_history:
-    with st.chat_message(chat["role"]):
-        st.markdown(chat["content"])
+    with st.chat_history:
+        with st.chat_message(chat["role"]):
+            st.markdown(chat["content"])
 
 # User Chat Prompt Action
 if user_input := st.chat_input("Ask about errors, request RCA, or look up keyword trends..."):
@@ -161,7 +162,7 @@ if user_input := st.chat_input("Ask about errors, request RCA, or look up keywor
                 )
                 
                 api_response = client_gemini.chat.completions.create(
-                    model="gemini-1.5-flash", # Free tier target model
+                    model="gemini-1.5-flash", # Corrected identifier
                     messages=[
                         {"role": "system", "content": system_prompt},
                         *st.session_state.chat_history
